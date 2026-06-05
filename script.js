@@ -86,22 +86,27 @@ function renderArmas() {
 
 // ══ DUNGEON ══
 const TILE = 32, COLS = 30, ROWS = 18;
-const PLAYER_SPEED = 2.5;
-const ENEMY_SPEED  = 1.1;
-const PLAYER_R = 11;
-const ENEMY_R  = 10;
-const ATTACK_RANGE   = TILE * 1.3;
-const ATTACK_COOLDOWN = 40; // frames entre ataques del enemigo (~0.67s a 60fps)
+const PLAYER_SPEED   = 2.5;
+const ENEMY_SPEED    = 1.1;
+const PLAYER_R       = 11;
+const ENEMY_R        = 10;
+const PROJ_SPEED     = 5;
+const PROJ_R         = 5;
+const ATTACK_COOLDOWN = 40;   // frames entre ataques del enemigo
+const FLASH_FRAMES    = 120;  // 2 segundos a 60fps
 
 const TIPOS_TILE = {PARED:0, PISO:1};
 let mapa = [];
 
-let canvas, ctx, player, enemies, armaActiva, hp;
-let gameLoopId = null;
+let canvas, ctx, player, enemies, projectiles, armaActiva, hp;
+let playerFlash = 0;          // frames restantes de flash de curación
+let gameLoopId  = null;
 let keys = {};
-let lastAxis = 'h'; // último eje presionado: 'h' horizontal · 'v' vertical
+let lastAxis = 'h';
 
-// Devuelve true si un círculo en (x,y) con radio r colisiona con una pared
+// Colores de proyectil por tipo
+const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
+
 function solid(x, y, r) {
   for (const [dx, dy] of [[-r,-r],[r,-r],[-r,r],[r,r]]) {
     const tc = Math.floor((x+dx)/TILE), tr = Math.floor((y+dy)/TILE);
@@ -141,7 +146,7 @@ function irDungeon() {
   irA('dungeon');
   canvas = document.getElementById('game-canvas');
   ctx = canvas.getContext('2d');
-  hp=100; armaActiva=0;
+  hp=100; armaActiva=0; projectiles=[]; playerFlash=0;
   player={x:5.5*TILE, y:5.5*TILE};
   keys={}; lastAxis='h';
   generarMapa();
@@ -152,7 +157,7 @@ function irDungeon() {
     keys[e.code] = true;
     if(['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code)) lastAxis='h';
     if(['ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code))   lastAxis='v';
-    if(e.code==='Space'||e.code==='KeyQ'){ e.preventDefault(); atacar(); }
+    if(e.code==='KeyE'){ e.preventDefault(); usarArma(); }
     if(e.code==='Digit1') selArma(0);
     if(e.code==='Digit2') selArma(1);
     if(e.code==='Digit3') selArma(2);
@@ -167,6 +172,8 @@ function irDungeon() {
 function gameLoop() {
   tickPlayer();
   tickEnemigos();
+  tickProjectiles();
+  if(playerFlash>0) playerFlash--;
   dibujar();
   renderHud();
   gameLoopId = requestAnimationFrame(gameLoop);
@@ -176,10 +183,10 @@ function tickPlayer() {
   const h = (keys['ArrowRight']||keys['KeyD']) ? 1 : (keys['ArrowLeft']||keys['KeyA']) ? -1 : 0;
   const v = (keys['ArrowDown'] ||keys['KeyS']) ? 1 : (keys['ArrowUp']  ||keys['KeyW']) ? -1 : 0;
 
+  // Sin diagonal para el jugador: gana el último eje presionado
   let mx=0, my=0;
-  if(h!==0 && v!==0){
-    if(lastAxis==='h') mx=h; else my=v; // sin diagonal: último eje gana
-  } else { mx=h; my=v; }
+  if(h!==0 && v!==0){ if(lastAxis==='h') mx=h; else my=v; }
+  else { mx=h; my=v; }
 
   if(mx){ const nx=player.x+mx*PLAYER_SPEED; if(!solid(nx,player.y,PLAYER_R)) player.x=nx; }
   if(my){ const ny=player.y+my*PLAYER_SPEED; if(!solid(player.x,ny,PLAYER_R)) player.y=ny; }
@@ -187,11 +194,12 @@ function tickPlayer() {
 
 function tickEnemigos() {
   if(!enemies) return;
+  const noOverlap = (nx,ny,self) => !enemies.find(e=>e.vivo&&e!==self&&pdist(nx,ny,e.x,e.y)<ENEMY_R*1.8);
+
   enemies.filter(e=>e.vivo).forEach(en => {
     if(en.cd>0){ en.cd--; return; }
 
     const d = pdist(en.x,en.y,player.x,player.y);
-
     if(d < PLAYER_R+ENEMY_R+2) {
       const dmg=5+Math.floor(Math.random()*5); hp-=dmg; if(hp<0)hp=0;
       dunMsg(`${en.nombre} te ataca: -${dmg} HP`);
@@ -199,50 +207,73 @@ function tickEnemigos() {
       return;
     }
 
-    // Movimiento sin diagonal: avanzar por el eje con mayor distancia
+    // Movimiento diagonal libre para enemigos
     const dx=player.x-en.x, dy=player.y-en.y;
-    const moveH = Math.abs(dx)>=Math.abs(dy);
-    const primary   = moveH ? [Math.sign(dx)*ENEMY_SPEED, 0] : [0, Math.sign(dy)*ENEMY_SPEED];
-    const secondary = moveH ? [0, Math.sign(dy)*ENEMY_SPEED] : [Math.sign(dx)*ENEMY_SPEED, 0];
+    const len=Math.hypot(dx,dy);
+    const mx=(dx/len)*ENEMY_SPEED, my=(dy/len)*ENEMY_SPEED;
 
-    const noOverlap = (nx,ny) => !enemies.find(e=>e.vivo&&e!==en&&pdist(nx,ny,e.x,e.y)<ENEMY_R*1.8);
-
-    for(const [mx,my] of [primary, secondary]){
-      const nx=en.x+mx, ny=en.y+my;
-      if(!solid(nx,ny,ENEMY_R) && noOverlap(nx,ny)){ en.x=nx; en.y=ny; break; }
+    if(!solid(en.x+mx,en.y+my,ENEMY_R) && noOverlap(en.x+mx,en.y+my,en)){
+      en.x+=mx; en.y+=my;
+    } else if(!solid(en.x+mx,en.y,ENEMY_R) && noOverlap(en.x+mx,en.y,en)){
+      en.x+=mx;
+    } else if(!solid(en.x,en.y+my,ENEMY_R) && noOverlap(en.x,en.y+my,en)){
+      en.y+=my;
     }
   });
 }
 
-function atacar() {
+// ── Usar arma activa con E ──
+function usarArma() {
   const arma = armasFabricadas[armaActiva];
-  if(!arma) return;
-  const cerca = enemies
-    .filter(e=>e.vivo && pdist(e.x,e.y,player.x,player.y)<ATTACK_RANGE)
-    .sort((a,b)=>pdist(a.x,a.y,player.x,player.y)-pdist(b.x,b.y,player.x,player.y));
-  if(!cerca.length){ dunMsg("No hay enemigos cerca"); return; }
-  atacarEnemigo(cerca[0]);
+  if(!arma){ dunMsg("Sin arma seleccionada"); return; }
+
+  if(arma.tipo === 'Util') {
+    const cura = {Agua:20,'Agua pura':40,Sal:10}[arma.nombre] ?? 15;
+    hp = Math.min(100, hp+cura);
+    playerFlash = FLASH_FRAMES;
+    dunMsg(`${arma.nombre}: +${cura} HP`);
+  } else {
+    // Disparar proyectil hacia el enemigo vivo más cercano
+    const target = enemies.filter(e=>e.vivo)
+      .sort((a,b)=>pdist(a.x,a.y,player.x,player.y)-pdist(b.x,b.y,player.x,player.y))[0];
+    if(!target){ dunMsg("No hay enemigos"); return; }
+    const dx=target.x-player.x, dy=target.y-player.y, len=Math.hypot(dx,dy);
+    projectiles.push({
+      x:player.x, y:player.y,
+      vx:(dx/len)*PROJ_SPEED, vy:(dy/len)*PROJ_SPEED,
+      arma, life:180
+    });
+    dunMsg(`${arma.nombre} lanzada!`);
+  }
+}
+
+function tickProjectiles() {
+  projectiles = projectiles.filter(p => {
+    p.x+=p.vx; p.y+=p.vy; p.life--;
+    if(p.life<=0 || solid(p.x,p.y,PROJ_R)) return false;
+
+    const hit = enemies.find(e=>e.vivo && pdist(e.x,e.y,p.x,p.y)<ENEMY_R+PROJ_R);
+    if(hit){
+      const base={Fuego:20,Veneno:12,Acido:18,Frio:10,Control:5,Raro:35}[p.arma.tipo]||10;
+      const dmg=base+Math.floor(Math.random()*8);
+      hit.hp-=dmg;
+      dunMsg(`${p.arma.nombre} → ${hit.nombre}: -${dmg} HP`);
+      if(hit.hp<=0){
+        hit.vivo=false;
+        dunMsg(`¡${hit.nombre} derrotado!`);
+        if(enemies.every(e=>!e.vivo)){
+          cancelAnimationFrame(gameLoopId);
+          setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
+        }
+      }
+      return false;
+    }
+    return true;
+  });
 }
 
 function selArma(i) {
   if(i < armasFabricadas.length){ armaActiva=i; renderHud(); dunMsg("Arma: "+armasFabricadas[i].nombre); }
-}
-
-function atacarEnemigo(en) {
-  const arma = armasFabricadas[armaActiva];
-  if(!arma) return;
-  const base = {Fuego:20,Veneno:12,Acido:18,Frio:10,Control:5,Util:0,Raro:35}[arma.tipo]||10;
-  const dmg  = base + Math.floor(Math.random()*8);
-  en.hp -= dmg;
-  dunMsg(`${arma.nombre} → ${en.nombre}: -${dmg} HP`);
-  if(en.hp<=0){
-    en.vivo=false;
-    dunMsg(`¡${en.nombre} derrotado!`);
-    if(enemies.every(e=>!e.vivo)){
-      cancelAnimationFrame(gameLoopId);
-      setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
-    }
-  }
 }
 
 function dibujar() {
@@ -258,6 +289,16 @@ function dibujar() {
     }
   }
 
+  // Proyectiles
+  projectiles.forEach(p=>{
+    const col = PROJ_COLOR[p.arma.tipo]||'#d8dce8';
+    ctx.fillStyle=col;
+    ctx.shadowColor=col; ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.arc(p.x,p.y,PROJ_R,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+  });
+
+  // Enemigos
   enemies.filter(e=>e.vivo).forEach(en=>{
     ctx.fillStyle='#d04545'; ctx.beginPath(); ctx.arc(en.x,en.y,ENEMY_R,0,Math.PI*2); ctx.fill();
     const bw=TILE-4;
@@ -265,7 +306,9 @@ function dibujar() {
     ctx.fillStyle='#d04545'; ctx.fillRect(en.x-bw/2, en.y-ENEMY_R-7, bw*(en.hp/en.maxHp), 4);
   });
 
-  ctx.fillStyle='#4ecf9a'; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2); ctx.fill();
+  // Jugador — color cambia durante flash de curación
+  const pColor = playerFlash>0 ? '#4a9fe0' : '#4ecf9a';
+  ctx.fillStyle=pColor; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle='#0b0d13'; ctx.lineWidth=2; ctx.stroke();
   ctx.fillStyle='#0b0d13'; ctx.font='bold 12px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('⚗',player.x,player.y);
