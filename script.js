@@ -104,8 +104,19 @@ let gameLoopId  = null;
 let keys = {};
 let lastAxis = 'h';
 
-// Colores de proyectil por tipo
+// Colores de proyectil / estado por tipo
 const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
+
+// Efectos de estado aplicados al impactar (duration en segundos → se convierte a frames al aplicar)
+const WEAPON_STATUS = {
+  Fuego:   { type:'burn',     seconds:3, dps:8,  label:'🔥 Quemando'   },
+  Veneno:  { type:'poison',   seconds:5, dps:4,  label:'☠ Envenenado'  },
+  Acido:   { type:'corrode',  seconds:3,         label:'⚗ Corroído'    }, // +50% daño recibido
+  Frio:    { type:'freeze',   seconds:2,         label:'❄ Congelado'   }, // sin movimiento
+  Control: { type:'slow',     seconds:3,         label:'🌀 Ralentizado' }, // mitad de velocidad
+  Raro:    { type:'paralyze', seconds:3,         label:'⚡ Paralizado'  }, // sin movimiento ni ataque
+};
+const STATUS_COLOR = {burn:'#e07b3a',poison:'#4ecf9a',corrode:'#d04545',freeze:'#7ab8e8',slow:'#6a7280',paralyze:'#9b6cd8'};
 
 function solid(x, y, r) {
   for (const [dx, dy] of [[-r,-r],[r,-r],[-r,r],[r,r]]) {
@@ -137,7 +148,7 @@ function spawnEnemigos() {
       const r=5+Math.floor(Math.random()*(ROWS-10));
       ex=(c+0.5)*TILE; ey=(r+0.5)*TILE;
     } while(solid(ex,ey,ENEMY_R) || pdist(ex,ey,player.x,player.y)<TILE*4);
-    enemies.push({x:ex, y:ey, hp:30, maxHp:30, nombre:tipos[Math.floor(Math.random()*tipos.length)], vivo:true, cd:0});
+    enemies.push({x:ex, y:ey, hp:30, maxHp:30, nombre:tipos[Math.floor(Math.random()*tipos.length)], vivo:true, cd:0, status:null, dmgTick:0});
   }
 }
 
@@ -197,20 +208,52 @@ function tickEnemigos() {
   const noOverlap = (nx,ny,self) => !enemies.find(e=>e.vivo&&e!==self&&pdist(nx,ny,e.x,e.y)<ENEMY_R*1.8);
 
   enemies.filter(e=>e.vivo).forEach(en => {
-    if(en.cd>0){ en.cd--; return; }
+
+    // ── Tick de estado ──
+    if(en.status){
+      en.status.framesLeft--;
+
+      // Daño por segundo (burn / poison): acumular frames y aplicar cada 60
+      if(en.status.dps){
+        en.dmgTick++;
+        if(en.dmgTick >= 60){
+          en.dmgTick = 0;
+          en.hp -= en.status.dps;
+          if(en.hp<=0){
+            en.vivo=false;
+            dunMsg(`${en.nombre} murió por ${en.status.label}!`);
+            if(enemies.every(e=>!e.vivo)){
+              cancelAnimationFrame(gameLoopId);
+              setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
+            }
+            return;
+          }
+        }
+      }
+
+      if(en.status.framesLeft <= 0){ en.status=null; en.dmgTick=0; }
+    }
+
+    // ── Cooldown de ataque ──
+    if(en.cd>0){ en.cd--; }
+
+    // Paralizado o congelado: sin movimiento ni ataque
+    const paralizado = en.status?.type==='paralyze' || en.status?.type==='freeze';
+    if(paralizado) return;
 
     const d = pdist(en.x,en.y,player.x,player.y);
-    if(d < PLAYER_R+ENEMY_R+2) {
+    if(d < PLAYER_R+ENEMY_R+2 && en.cd===0) {
       const dmg=5+Math.floor(Math.random()*5); hp-=dmg; if(hp<0)hp=0;
       dunMsg(`${en.nombre} te ataca: -${dmg} HP`);
       en.cd = ATTACK_COOLDOWN;
       return;
     }
 
-    // Movimiento diagonal libre para enemigos
+    // ── Movimiento diagonal libre ──
+    const speed = en.status?.type==='slow' ? ENEMY_SPEED*0.4 : ENEMY_SPEED;
     const dx=player.x-en.x, dy=player.y-en.y;
     const len=Math.hypot(dx,dy);
-    const mx=(dx/len)*ENEMY_SPEED, my=(dy/len)*ENEMY_SPEED;
+    const mx=(dx/len)*speed, my=(dy/len)*speed;
 
     if(!solid(en.x+mx,en.y+my,ENEMY_R) && noOverlap(en.x+mx,en.y+my,en)){
       en.x+=mx; en.y+=my;
@@ -255,9 +298,18 @@ function tickProjectiles() {
     const hit = enemies.find(e=>e.vivo && pdist(e.x,e.y,p.x,p.y)<ENEMY_R+PROJ_R);
     if(hit){
       const base={Fuego:20,Veneno:12,Acido:18,Frio:10,Control:5,Raro:35}[p.arma.tipo]||10;
-      const dmg=base+Math.floor(Math.random()*8);
+      const corrodeMulti = hit.status?.type==='corrode' ? 1.5 : 1;
+      const dmg=Math.round((base+Math.floor(Math.random()*8))*corrodeMulti);
       hit.hp-=dmg;
       dunMsg(`${p.arma.nombre} → ${hit.nombre}: -${dmg} HP`);
+
+      // Aplicar efecto de estado
+      const ws = WEAPON_STATUS[p.arma.tipo];
+      if(ws){
+        hit.status = { type:ws.type, framesLeft:Math.round(ws.seconds*60), dps:ws.dps||0, label:ws.label };
+        hit.dmgTick = 0;
+      }
+
       if(hit.hp<=0){
         hit.vivo=false;
         dunMsg(`¡${hit.nombre} derrotado!`);
@@ -300,10 +352,24 @@ function dibujar() {
 
   // Enemigos
   enemies.filter(e=>e.vivo).forEach(en=>{
+    // Anillo de estado
+    if(en.status){
+      const sc = STATUS_COLOR[en.status.type]||'#fff';
+      const pulse = 0.5+0.5*Math.sin(Date.now()/180); // pulso suave
+      ctx.strokeStyle=sc; ctx.lineWidth=2+pulse*2;
+      ctx.globalAlpha=0.5+pulse*0.4;
+      ctx.beginPath(); ctx.arc(en.x,en.y,ENEMY_R+4,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1; ctx.lineWidth=1;
+    }
     ctx.fillStyle='#d04545'; ctx.beginPath(); ctx.arc(en.x,en.y,ENEMY_R,0,Math.PI*2); ctx.fill();
     const bw=TILE-4;
     ctx.fillStyle='#3a1515'; ctx.fillRect(en.x-bw/2, en.y-ENEMY_R-7, bw, 4);
     ctx.fillStyle='#d04545'; ctx.fillRect(en.x-bw/2, en.y-ENEMY_R-7, bw*(en.hp/en.maxHp), 4);
+    // Icono de estado sobre el enemigo
+    if(en.status){
+      ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(en.status.label.split(' ')[0], en.x, en.y-ENEMY_R-14);
+    }
   });
 
   // Jugador — color cambia durante flash de curación
