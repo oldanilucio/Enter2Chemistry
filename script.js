@@ -254,5 +254,26 @@ function toast(msg, color='#d8dce8') {
   el.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2800);
 }
 
+// ══ RECETARIO ══
+function abrirRecetario() {
+  const body = document.getElementById('modal-body');
+  body.innerHTML = Object.entries(REACCIONES).map(([clave, r]) => {
+    const c = TIPO_COLOR[r.tipo] || '#d8dce8';
+    return `
+      <div class="rec-row">
+        <span class="rec-clave">${clave.split('+').join(' + ')}</span>
+        <span class="rec-nombre" style="color:${c}">${r.nombre}</span>
+        <span class="rec-efecto">${r.efecto}</span>
+        <span class="rec-tipo-tag" style="color:${c};border-color:${c}55">${r.tipo}</span>
+      </div>`;
+  }).join('');
+  document.getElementById('modal-recetario').classList.add('open');
+}
+
+function cerrarRecetario(e) {
+  if(!e || e.target === document.getElementById('modal-recetario'))
+    document.getElementById('modal-recetario').classList.remove('open');
+}
+
 // Init
 reiniciarLab();

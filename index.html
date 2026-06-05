@@ -23,6 +23,7 @@
   <div class="lab-header">
     <h1>⚗ LABORATORIO</h1>
     <p>seleccioná elementos · combiná · fabricá armas para la dungeon</p>
+    <button class="mbtn mbtn-cl recetario-btn" onclick="abrirRecetario()">// VER REACCIONES</button>
   </div>
   <div class="lab-body">
     <div class="panel" id="panel-elem">
@@ -58,6 +59,17 @@
   <canvas id="game-canvas" width="960" height="600"></canvas>
   <div class="dun-msg" id="dun-msg"></div>
   <button class="btn-volver" onclick="irA('menu')">← VOLVER AL MENÚ</button>
+</div>
+
+<!-- ══ MODAL RECETARIO ══ -->
+<div id="modal-recetario" class="modal-overlay" onclick="cerrarRecetario(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="panel-title" style="margin:0">// RECETARIO DE REACCIONES</span>
+      <button class="modal-close" onclick="cerrarRecetario()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
 </div>
 
 <div id="toast"></div>
