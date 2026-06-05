@@ -85,25 +85,31 @@ function renderArmas() {
 }
 
 // ══ DUNGEON ══
-const TILE = 32, COLS = 30, ROWS = 18;
-const PLAYER_SPEED    = 2.5;
-const ENEMY_SPEED     = 1.1;
+// TILE=40 → canvas 960x600 = exactamente 24x15 tiles (estilo Isaac: habitaciones amplias)
+const TILE = 40, COLS = 24, ROWS = 15;
+const PLAYER_SPEED    = 3;
+const ENEMY_SPEED     = 1.3;
 const PLAYER_R        = 16;
-const ENEMY_R         = 10;
-const PROJ_SPEED      = 5;
+const ENEMY_R         = 12;
+const PROJ_SPEED      = 6;
 const PROJ_R          = 5;
 const ATTACK_COOLDOWN = 40;
 const FLASH_FRAMES    = 120;
 
+// Puertas centradas en el mapa: cols 11-12 (N/S), rows 7-7 (E/W)
+const DOOR_N_COLS = [11,12];
+const DOOR_S_COLS = [11,12];
+const DOOR_EW_ROWS = [7,7];
+
 // Grilla de habitaciones
 const ROOM_COLS = 5, ROOM_ROWS = 3;
 
-// Posiciones de puertas (tiles centrales, 2 tiles de ancho/alto)
+// (DOOR_DEF legacy — reemplazado por constantes arriba)
 const DOOR_DEF = {
-  N: { wallR:0,  cols:[14,15] },
-  S: { wallR:17, cols:[14,15] },
-  E: { wallC:29, rows:[8,9]  },
-  W: { wallC:0,  rows:[8,9]  },
+  N: { wallR:0,  cols:DOOR_N_COLS },
+  S: { wallR:14, cols:DOOR_S_COLS },
+  E: { wallC:23, rows:DOOR_EW_ROWS },
+  W: { wallC:0,  rows:DOOR_EW_ROWS },
 };
 
 const TIPOS_TILE = {PARED:0, PISO:1, PUERTA:2};
@@ -213,10 +219,10 @@ function buildMapa(room) {
   mapa=Array.from({length:ROWS},()=>Array(COLS).fill(TIPOS_TILE.PARED));
   for(let r=1;r<ROWS-1;r++) for(let c=1;c<COLS-1;c++) mapa[r][c]=TIPOS_TILE.PISO;
   // Abrir puertas
-  if(room.doors.N){ mapa[0][14]=TIPOS_TILE.PUERTA; mapa[0][15]=TIPOS_TILE.PUERTA; }
-  if(room.doors.S){ mapa[17][14]=TIPOS_TILE.PUERTA; mapa[17][15]=TIPOS_TILE.PUERTA; }
-  if(room.doors.E){ mapa[8][29]=TIPOS_TILE.PUERTA; mapa[9][29]=TIPOS_TILE.PUERTA; }
-  if(room.doors.W){ mapa[8][0]=TIPOS_TILE.PUERTA; mapa[9][0]=TIPOS_TILE.PUERTA; }
+  if(room.doors.N){ mapa[0][11]=TIPOS_TILE.PUERTA; mapa[0][12]=TIPOS_TILE.PUERTA; }
+  if(room.doors.S){ mapa[14][11]=TIPOS_TILE.PUERTA; mapa[14][12]=TIPOS_TILE.PUERTA; }
+  if(room.doors.E){ mapa[7][23]=TIPOS_TILE.PUERTA; mapa[8][23]=TIPOS_TILE.PUERTA; }
+  if(room.doors.W){ mapa[7][0]=TIPOS_TILE.PUERTA; mapa[8][0]=TIPOS_TILE.PUERTA; }
   // Obstáculos internos (no en la sala de inicio)
   if(!room.isStart){
     for(let i=0;i<25;i++){
@@ -254,8 +260,8 @@ function loadRoom(room, fromDir) {
   buildMapa(room);
   projectiles=[];
   // Posición de entrada según dirección de llegada
-  const cx=14.5*TILE, cy=8.5*TILE;
-  if(!fromDir)        { player.x=cx;              player.y=cy;              }
+  const cx=11.5*TILE, cy=7.5*TILE;
+  if(!fromDir)          { player.x=cx;              player.y=cy;              }
   else if(fromDir==='N'){ player.x=cx;              player.y=2.5*TILE;        }
   else if(fromDir==='S'){ player.x=cx;              player.y=(ROWS-2.5)*TILE; }
   else if(fromDir==='E'){ player.x=(COLS-2.5)*TILE; player.y=cy;              }
@@ -272,9 +278,9 @@ function loadRoom(room, fromDir) {
 function checkDoorTransition() {
   if(!curRoom || transitionCooldown>0) return;
   const cx=player.x, cy=player.y;
-  // Alineación con la apertura de la puerta (±1 tile de margen extra)
-  const inH = cx > 12*TILE && cx < 18*TILE;
-  const inV  = cy > 6*TILE  && cy < 12*TILE;
+  // Alineación con la apertura de la puerta (cols 11-12 / rows 7-8)
+  const inH = cx > 9*TILE && cx < 15*TILE;
+  const inV  = cy > 5*TILE && cy < 10*TILE;
   if(curRoom.doors.N && inH && cy < TILE)         { transition('N'); return; }
   if(curRoom.doors.S && inH && cy > (ROWS-1)*TILE) { transition('S'); return; }
   if(curRoom.doors.E && inV && cx > (COLS-1)*TILE) { transition('E'); return; }
@@ -337,7 +343,7 @@ function irDungeon() {
   canvas=document.getElementById('game-canvas');
   ctx=canvas.getContext('2d');
   hp=100; armaActiva=0; projectiles=[]; playerFlash=0;
-  player={x:14.5*TILE, y:8.5*TILE, facing:'S'};
+  player={x:11.5*TILE, y:7.5*TILE, facing:'S'};
   keys={}; lastAxis='h';
   preloadSprites();
 
@@ -440,11 +446,13 @@ function usarArma() {
     hp=Math.min(100,hp+cura); playerFlash=FLASH_FRAMES;
     dunMsg(`${arma.nombre}: +${cura} HP`);
   } else {
-    const target=enemies.filter(e=>e.vivo)
-      .sort((a,b)=>pdist(a.x,a.y,player.x,player.y)-pdist(b.x,b.y,player.x,player.y))[0];
-    if(!target){dunMsg("No hay enemigos");return;}
-    const dx=target.x-player.x,dy=target.y-player.y,len=Math.hypot(dx,dy);
-    projectiles.push({x:player.x,y:player.y,vx:(dx/len)*PROJ_SPEED,vy:(dy/len)*PROJ_SPEED,arma,life:180});
+    const DIR_VEC = {N:{vx:0,vy:-1},S:{vx:0,vy:1},E:{vx:1,vy:0},W:{vx:-1,vy:0}};
+    const {vx,vy} = DIR_VEC[player.facing] || {vx:0,vy:1};
+    projectiles.push({
+      x:player.x, y:player.y,
+      vx:vx*PROJ_SPEED, vy:vy*PROJ_SPEED,
+      arma, life:220
+    });
     dunMsg(`${arma.nombre} lanzada!`);
   }
 }
