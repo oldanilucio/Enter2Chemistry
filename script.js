@@ -86,14 +86,34 @@ function renderArmas() {
 
 // ══ DUNGEON ══
 const TILE = 32, COLS = 30, ROWS = 18;
-let canvas, ctx, player, enemies, armaActiva, turno, msgTimer, hp;
-let enemyLoopId = null;
-const ENEMY_INTERVAL = 800; // ms entre cada movimiento autónomo de enemigos
+const PLAYER_SPEED = 2.5;
+const ENEMY_SPEED  = 1.1;
+const PLAYER_R = 11;
+const ENEMY_R  = 10;
+const ATTACK_RANGE   = TILE * 1.3;
+const ATTACK_COOLDOWN = 40; // frames entre ataques del enemigo (~0.67s a 60fps)
+
 const TIPOS_TILE = {PARED:0, PISO:1};
 let mapa = [];
 
+let canvas, ctx, player, enemies, armaActiva, hp;
+let gameLoopId = null;
+let keys = {};
+let lastAxis = 'h'; // último eje presionado: 'h' horizontal · 'v' vertical
+
+// Devuelve true si un círculo en (x,y) con radio r colisiona con una pared
+function solid(x, y, r) {
+  for (const [dx, dy] of [[-r,-r],[r,-r],[-r,r],[r,r]]) {
+    const tc = Math.floor((x+dx)/TILE), tr = Math.floor((y+dy)/TILE);
+    if (tr<0||tr>=ROWS||tc<0||tc>=COLS||mapa[tr][tc]===TIPOS_TILE.PARED) return true;
+  }
+  return false;
+}
+
+function pdist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+
 function generarMapa() {
-  mapa = Array.from({length:ROWS}, () => Array(COLS).fill(TIPOS_TILE.PARED));
+  mapa = Array.from({length:ROWS}, ()=>Array(COLS).fill(TIPOS_TILE.PARED));
   for(let r=2;r<ROWS-2;r++) for(let c=2;c<COLS-2;c++) mapa[r][c]=TIPOS_TILE.PISO;
   for(let i=0;i<40;i++){
     const r=3+Math.floor(Math.random()*(ROWS-6));
@@ -106,12 +126,13 @@ function spawnEnemigos() {
   enemies = [];
   const tipos = ["Golem","Slime","Sombra","Gólem de hierro","Espectro"];
   for(let i=0;i<6;i++){
-    let c, r;
-    do{
-      c=5+Math.floor(Math.random()*(COLS-10));
-      r=5+Math.floor(Math.random()*(ROWS-10));
-    } while(mapa[r][c]!==TIPOS_TILE.PISO || (Math.abs(c-player.c)<3 && Math.abs(r-player.r)<3));
-    enemies.push({c,r,hp:30,maxHp:30,nombre:tipos[Math.floor(Math.random()*tipos.length)],vivo:true});
+    let ex, ey;
+    do {
+      const c=5+Math.floor(Math.random()*(COLS-10));
+      const r=5+Math.floor(Math.random()*(ROWS-10));
+      ex=(c+0.5)*TILE; ey=(r+0.5)*TILE;
+    } while(solid(ex,ey,ENEMY_R) || pdist(ex,ey,player.x,player.y)<TILE*4);
+    enemies.push({x:ex, y:ey, hp:30, maxHp:30, nombre:tipos[Math.floor(Math.random()*tipos.length)], vivo:true, cd:0});
   }
 }
 
@@ -120,49 +141,87 @@ function irDungeon() {
   irA('dungeon');
   canvas = document.getElementById('game-canvas');
   ctx = canvas.getContext('2d');
-  hp = 100; armaActiva = 0; turno = 0;
-  player = {c:5, r:5};
+  hp=100; armaActiva=0;
+  player={x:5.5*TILE, y:5.5*TILE};
+  keys={}; lastAxis='h';
   generarMapa();
   spawnEnemigos();
   renderHud();
-  dibujar();
-  document.onkeydown = onKey;
-  clearInterval(enemyLoopId);
-  enemyLoopId = setInterval(tickEnemigos, ENEMY_INTERVAL);
-}
 
-function onKey(e) {
-  const keys = {
-    ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',
-    KeyW:'up',KeyS:'down',KeyA:'left',KeyD:'right',
-    KeyQ:'atk',Space:'atk',Digit1:'s1',Digit2:'s2',Digit3:'s3'
+  document.onkeydown = e => {
+    keys[e.code] = true;
+    if(['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code)) lastAxis='h';
+    if(['ArrowUp','ArrowDown','KeyW','KeyS'].includes(e.code))   lastAxis='v';
+    if(e.code==='Space'||e.code==='KeyQ'){ e.preventDefault(); atacar(); }
+    if(e.code==='Digit1') selArma(0);
+    if(e.code==='Digit2') selArma(1);
+    if(e.code==='Digit3') selArma(2);
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
   };
-  const a = keys[e.code];
-  if(!a) return;
-  e.preventDefault();
-  if(a==='up'||a==='down'||a==='left'||a==='right') mover(a);
-  else if(a==='atk') atacar();
-  else if(a==='s1') selArma(0);
-  else if(a==='s2') selArma(1);
-  else if(a==='s3') selArma(2);
+  document.onkeyup = e => { keys[e.code]=false; };
+
+  cancelAnimationFrame(gameLoopId);
+  gameLoopId = requestAnimationFrame(gameLoop);
 }
 
-function mover(dir) {
-  let nc=player.c, nr=player.r;
-  if(dir==='up') nr--; else if(dir==='down') nr++;
-  else if(dir==='left') nc--; else if(dir==='right') nc++;
-  if(nr<0||nr>=ROWS||nc<0||nc>=COLS) return;
-  if(mapa[nr][nc]===TIPOS_TILE.PARED) return;
-  const en = enemies.find(e=>e.c===nc&&e.r===nr&&e.vivo);
-  if(en){ atacarEnemigo(en); return; }
-  player.c=nc; player.r=nr;
+function gameLoop() {
+  tickPlayer();
+  tickEnemigos();
   dibujar();
+  renderHud();
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+function tickPlayer() {
+  const h = (keys['ArrowRight']||keys['KeyD']) ? 1 : (keys['ArrowLeft']||keys['KeyA']) ? -1 : 0;
+  const v = (keys['ArrowDown'] ||keys['KeyS']) ? 1 : (keys['ArrowUp']  ||keys['KeyW']) ? -1 : 0;
+
+  let mx=0, my=0;
+  if(h!==0 && v!==0){
+    if(lastAxis==='h') mx=h; else my=v; // sin diagonal: último eje gana
+  } else { mx=h; my=v; }
+
+  if(mx){ const nx=player.x+mx*PLAYER_SPEED; if(!solid(nx,player.y,PLAYER_R)) player.x=nx; }
+  if(my){ const ny=player.y+my*PLAYER_SPEED; if(!solid(player.x,ny,PLAYER_R)) player.y=ny; }
+}
+
+function tickEnemigos() {
+  if(!enemies) return;
+  enemies.filter(e=>e.vivo).forEach(en => {
+    if(en.cd>0){ en.cd--; return; }
+
+    const d = pdist(en.x,en.y,player.x,player.y);
+
+    if(d < PLAYER_R+ENEMY_R+2) {
+      const dmg=5+Math.floor(Math.random()*5); hp-=dmg; if(hp<0)hp=0;
+      dunMsg(`${en.nombre} te ataca: -${dmg} HP`);
+      en.cd = ATTACK_COOLDOWN;
+      return;
+    }
+
+    // Movimiento sin diagonal: avanzar por el eje con mayor distancia
+    const dx=player.x-en.x, dy=player.y-en.y;
+    const moveH = Math.abs(dx)>=Math.abs(dy);
+    const primary   = moveH ? [Math.sign(dx)*ENEMY_SPEED, 0] : [0, Math.sign(dy)*ENEMY_SPEED];
+    const secondary = moveH ? [0, Math.sign(dy)*ENEMY_SPEED] : [Math.sign(dx)*ENEMY_SPEED, 0];
+
+    const noOverlap = (nx,ny) => !enemies.find(e=>e.vivo&&e!==en&&pdist(nx,ny,e.x,e.y)<ENEMY_R*1.8);
+
+    for(const [mx,my] of [primary, secondary]){
+      const nx=en.x+mx, ny=en.y+my;
+      if(!solid(nx,ny,ENEMY_R) && noOverlap(nx,ny)){ en.x=nx; en.y=ny; break; }
+    }
+  });
 }
 
 function atacar() {
-  const adj = enemies.filter(e=>e.vivo&&Math.abs(e.c-player.c)<=1&&Math.abs(e.r-player.r)<=1);
-  if(!adj.length){ dunMsg("No hay enemigos cerca"); return; }
-  atacarEnemigo(adj[0]);
+  const arma = armasFabricadas[armaActiva];
+  if(!arma) return;
+  const cerca = enemies
+    .filter(e=>e.vivo && pdist(e.x,e.y,player.x,player.y)<ATTACK_RANGE)
+    .sort((a,b)=>pdist(a.x,a.y,player.x,player.y)-pdist(b.x,b.y,player.x,player.y));
+  if(!cerca.length){ dunMsg("No hay enemigos cerca"); return; }
+  atacarEnemigo(cerca[0]);
 }
 
 function selArma(i) {
@@ -172,50 +231,24 @@ function selArma(i) {
 function atacarEnemigo(en) {
   const arma = armasFabricadas[armaActiva];
   if(!arma) return;
-  const dmg = calcularDano(arma);
+  const base = {Fuego:20,Veneno:12,Acido:18,Frio:10,Control:5,Util:0,Raro:35}[arma.tipo]||10;
+  const dmg  = base + Math.floor(Math.random()*8);
   en.hp -= dmg;
   dunMsg(`${arma.nombre} → ${en.nombre}: -${dmg} HP`);
   if(en.hp<=0){
     en.vivo=false;
     dunMsg(`¡${en.nombre} derrotado!`);
     if(enemies.every(e=>!e.vivo)){
-      clearInterval(enemyLoopId);
+      cancelAnimationFrame(gameLoopId);
       setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
     }
   }
-  dibujar(); renderHud();
-}
-
-function calcularDano(arma) {
-  const base = {Fuego:20,Veneno:12,Acido:18,Frio:10,Control:5,Util:0,Raro:35}[arma.tipo]||10;
-  return base + Math.floor(Math.random()*8);
-}
-
-function tickEnemigos() {
-  if(!enemies) return;
-  enemies.filter(e=>e.vivo).forEach(en => {
-    const dist = Math.abs(en.c-player.c)+Math.abs(en.r-player.r);
-    if(dist===1){
-      const dmg=5+Math.floor(Math.random()*5); hp-=dmg; if(hp<0)hp=0;
-      dunMsg(`${en.nombre} te ataca: -${dmg} HP`);
-    } else {
-      const dc=Math.sign(player.c-en.c), dr=Math.sign(player.r-en.r);
-      // Intentar moverse en diagonal, sino solo horizontal o vertical
-      const opciones = [[dc,dr],[dc,0],[0,dr]];
-      for(const [mc,mr] of opciones){
-        const nc=en.c+mc, nr=en.r+mr;
-        if(mapa[nr]?.[nc]===TIPOS_TILE.PISO && !enemies.find(e=>e.vivo&&e.c===nc&&e.r===nr)){
-          en.c=nc; en.r=nr; break;
-        }
-      }
-    }
-  });
-  dibujar(); renderHud();
 }
 
 function dibujar() {
   if(!ctx) return;
   ctx.fillStyle='#0b0d13'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(mapa[r][c]===TIPOS_TILE.PARED){
       ctx.fillStyle='#1a1e2c'; ctx.fillRect(c*TILE,r*TILE,TILE,TILE);
@@ -224,18 +257,18 @@ function dibujar() {
       ctx.fillStyle='#12151f'; ctx.fillRect(c*TILE,r*TILE,TILE,TILE);
     }
   }
+
   enemies.filter(e=>e.vivo).forEach(en=>{
-    const x=en.c*TILE, y=en.r*TILE;
-    ctx.fillStyle='#d04545'; ctx.beginPath(); ctx.arc(x+TILE/2,y+TILE/2,10,0,Math.PI*2); ctx.fill();
-    const pw=(TILE-4)*(en.hp/en.maxHp);
-    ctx.fillStyle='#3a1515'; ctx.fillRect(x+2,y+2,TILE-4,4);
-    ctx.fillStyle='#d04545'; ctx.fillRect(x+2,y+2,pw,4);
+    ctx.fillStyle='#d04545'; ctx.beginPath(); ctx.arc(en.x,en.y,ENEMY_R,0,Math.PI*2); ctx.fill();
+    const bw=TILE-4;
+    ctx.fillStyle='#3a1515'; ctx.fillRect(en.x-bw/2, en.y-ENEMY_R-7, bw, 4);
+    ctx.fillStyle='#d04545'; ctx.fillRect(en.x-bw/2, en.y-ENEMY_R-7, bw*(en.hp/en.maxHp), 4);
   });
-  const px=player.c*TILE, py=player.r*TILE;
-  ctx.fillStyle='#4ecf9a'; ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE/2,12,0,Math.PI*2); ctx.fill();
+
+  ctx.fillStyle='#4ecf9a'; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle='#0b0d13'; ctx.lineWidth=2; ctx.stroke();
   ctx.fillStyle='#0b0d13'; ctx.font='bold 12px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('⚗',px+TILE/2,py+TILE/2);
+  ctx.fillText('⚗',player.x,player.y);
 }
 
 function renderHud() {
@@ -259,7 +292,11 @@ function irA(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if(id==='lab') reiniciarLab();
-  if(id!=='dungeon'){ clearInterval(enemyLoopId); document.onkeydown = null; }
+  if(id!=='dungeon'){
+    cancelAnimationFrame(gameLoopId);
+    document.onkeydown = null;
+    document.onkeyup   = null;
+  }
 }
 
 let toastT;
