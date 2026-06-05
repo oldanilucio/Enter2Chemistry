@@ -1,42 +1,4 @@
-// ══ DATOS ══
-const TIPO_COLOR = {Util:"#4a9fe0",Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
-
-const ELEMENTOS = [
-  {s:"H",n:"Hidrógeno",u:4},{s:"He",n:"Helio",u:1},{s:"Li",n:"Litio",u:2},
-  {s:"Be",n:"Berilio",u:1},{s:"B",n:"Boro",u:2},{s:"C",n:"Carbono",u:4},
-  {s:"N",n:"Nitrógeno",u:3},{s:"O",n:"Oxígeno",u:4},{s:"F",n:"Flúor",u:2},
-  {s:"Ne",n:"Neón",u:1},{s:"Na",n:"Sodio",u:2},{s:"Mg",n:"Magnesio",u:2},
-  {s:"Al",n:"Aluminio",u:2},{s:"Si",n:"Silicio",u:2},{s:"P",n:"Fósforo",u:2},
-  {s:"S",n:"Azufre",u:3},{s:"Cl",n:"Cloro",u:2},{s:"Ar",n:"Argón",u:1},
-  {s:"K",n:"Potasio",u:2},{s:"Ca",n:"Calcio",u:2},{s:"Fe",n:"Hierro",u:3},
-  {s:"Cu",n:"Cobre",u:2},{s:"Zn",n:"Zinc",u:2},{s:"Br",n:"Bromo",u:2},
-  {s:"Ag",n:"Plata",u:1},{s:"I",n:"Yodo",u:2},{s:"Au",n:"Oro",u:1},
-  {s:"Hg",n:"Mercurio",u:1},{s:"Pb",n:"Plomo",u:2},{s:"U",n:"Uranio",u:1},
-];
-
-const REACCIONES = {
-  "H+O":    {nombre:"Agua",            tipo:"Util",    efecto:"+20 HP al usarla"},
-  "H+H+O":  {nombre:"Agua pura",       tipo:"Util",    efecto:"+40 HP, cura veneno"},
-  "C+H":    {nombre:"Metano",          tipo:"Fuego",   efecto:"Daño 15, ignición 3t"},
-  "C+O":    {nombre:"CO₂",             tipo:"Control", efecto:"Sofoca enemigo 2t"},
-  "C+C+H":  {nombre:"Acetileno",       tipo:"Fuego",   efecto:"Explosión, daño 30"},
-  "H+N":    {nombre:"Amoniaco",        tipo:"Veneno",  efecto:"Envenena 5 turnos"},
-  "N+N":    {nombre:"N₂",              tipo:"Frio",    efecto:"Congela 1 turno"},
-  "N+O":    {nombre:"Óxido nítrico",   tipo:"Veneno",  efecto:"Daño 10, ralentiza"},
-  "H+N+O":  {nombre:"Ácido nítrico",   tipo:"Acido",   efecto:"Disuelve armadura"},
-  "H+S":    {nombre:"Ac. sulfhídrico", tipo:"Veneno",  efecto:"Daño 12, aturde 1t"},
-  "O+S":    {nombre:"SO₂",             tipo:"Veneno",  efecto:"Daño 8 en área"},
-  "Cl+Na":  {nombre:"Sal",             tipo:"Util",    efecto:"Cura 10 HP"},
-  "Cl+H":   {nombre:"Ac. clorhídrico", tipo:"Acido",   efecto:"Daño 20, corroe"},
-  "Fe+O":   {nombre:"Óxido de hierro", tipo:"Control", efecto:"Enmohece armas enemigas"},
-  "Ca+O":   {nombre:"Cal viva",        tipo:"Control", efecto:"Cegador al contacto"},
-  "Mg+O":   {nombre:"Óxido magnesio",  tipo:"Fuego",   efecto:"Destello cegador"},
-  "K+O":    {nombre:"Óxido potasio",   tipo:"Fuego",   efecto:"Explosión suave"},
-  "O+P":    {nombre:"Pentóx. fósforo", tipo:"Veneno",  efecto:"Nube tóxica"},
-  "Au+Hg":  {nombre:"Amalgama de oro", tipo:"Raro",    efecto:"Paraliza 3 turnos"},
-  "O+U":    {nombre:"Uraninita",       tipo:"Raro",    efecto:"Daño radiactivo 50"},
-  "Ag+Cl":  {nombre:"Cloruro plata",   tipo:"Raro",    efecto:"Debilita enemigos"},
-};
+// TIPO_COLOR, ELEMENTOS y REACCIONES vienen de reactions.js
 
 // ══ ESTADO LAB ══
 let usos = {}, seleccionados = [], armasFabricadas = [];
