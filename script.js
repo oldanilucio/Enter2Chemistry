@@ -88,7 +88,7 @@ function renderArmas() {
 const TILE = 32, COLS = 30, ROWS = 18;
 const PLAYER_SPEED    = 2.5;
 const ENEMY_SPEED     = 1.1;
-const PLAYER_R        = 11;
+const PLAYER_R        = 16;
 const ENEMY_R         = 10;
 const PROJ_SPEED      = 5;
 const PROJ_R          = 5;
@@ -269,7 +269,7 @@ function renderMinimap() {
     if(!mc) return;
     mmCtx=mc.getContext('2d');
   }
-  const RW=15, RH=11, GAP=3;
+  const RW=10, RH=7, GAP=2;
   mmCtx.clearRect(0,0,96,48);
   for(let gy=0;gy<ROOM_ROWS;gy++) for(let gx=0;gx<ROOM_COLS;gx++){
     const room=roomGrid[gy][gx];
