@@ -118,6 +118,7 @@ let lastAxis = 'h';
 // Sistema de habitaciones
 let roomGrid = [];
 let curRoom  = null;
+let transitionCooldown = 0; // frames de gracia tras cambiar de sala
 
 const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
 
@@ -234,15 +235,17 @@ function loadRoom(room, fromDir) {
 }
 
 // ── Detectar si el jugador salió por una puerta ──
+// Trigger cuando el centro del jugador entra en la fila/columna del borde (tile 0 o tile max)
 function checkDoorTransition() {
-  if(!curRoom) return;
+  if(!curRoom || transitionCooldown>0) return;
   const cx=player.x, cy=player.y;
-  const inH=cx>13.5*TILE&&cx<16.5*TILE;
-  const inV=cy>7.5*TILE &&cy<10.5*TILE;
-  if(curRoom.doors.N&&inH&&cy<TILE*0.4)         transition('N');
-  else if(curRoom.doors.S&&inH&&cy>(ROWS-0.4)*TILE) transition('S');
-  else if(curRoom.doors.E&&inV&&cx>(COLS-0.4)*TILE) transition('E');
-  else if(curRoom.doors.W&&inV&&cx<TILE*0.4)         transition('W');
+  // Alineación con la apertura de la puerta (±1 tile de margen extra)
+  const inH = cx > 12*TILE && cx < 18*TILE;
+  const inV  = cy > 6*TILE  && cy < 12*TILE;
+  if(curRoom.doors.N && inH && cy < TILE)         { transition('N'); return; }
+  if(curRoom.doors.S && inH && cy > (ROWS-1)*TILE) { transition('S'); return; }
+  if(curRoom.doors.E && inV && cx > (COLS-1)*TILE) { transition('E'); return; }
+  if(curRoom.doors.W && inV && cx < TILE)           { transition('W'); return; }
 }
 
 function transition(dir) {
@@ -252,34 +255,46 @@ function transition(dir) {
                E:roomGrid[gy]?.[gx+1],W:roomGrid[gy]?.[gx-1]}[dir];
   if(!next) return;
   loadRoom(next, OPP[dir]);
+  transitionCooldown = 40; // ~0.7s de gracia para no re-triggerear
   renderHud();
-  dunMsg(`Habitación (${next.gx+1},${next.gy+1}) — ${next.cleared?'despejada':'¡cuidado!'}`);
+  dunMsg(`Sala (${next.gx+1},${next.gy+1}) — ${next.cleared?'despejada':'¡cuidado!'}`);
 }
 
-// ── Minimap ──
-function drawMinimap() {
-  const RW=14, RH=10, GAP=3;
-  const ox=canvas.width-(ROOM_COLS*(RW+GAP))-12;
-  const oy=12;
-  ctx.globalAlpha=0.85;
+// ── Minimap en canvas del HUD ──
+let mmCtx = null;
+function renderMinimap() {
+  if(!roomGrid.length) return;
+  if(!mmCtx){
+    const mc=document.getElementById('minimap-canvas');
+    if(!mc) return;
+    mmCtx=mc.getContext('2d');
+  }
+  const RW=15, RH=11, GAP=3;
+  mmCtx.clearRect(0,0,96,48);
   for(let gy=0;gy<ROOM_ROWS;gy++) for(let gx=0;gx<ROOM_COLS;gx++){
     const room=roomGrid[gy][gx];
-    const x=ox+gx*(RW+GAP), y=oy+gy*(RH+GAP);
-    if(!room.visited){ continue; }
-    // Fondo de habitación
-    ctx.fillStyle= room===curRoom ? '#4ecf9a' : room.cleared ? '#2a3a50' : '#3a2a2a';
-    ctx.fillRect(x,y,RW,RH);
-    // Conexiones (pasillos entre habitaciones)
-    ctx.fillStyle='#4a5060';
-    if(room.doors.E&&gx<ROOM_COLS-1) ctx.fillRect(x+RW,y+RH/2-1,GAP,2);
-    if(room.doors.S&&gy<ROOM_ROWS-1) ctx.fillRect(x+RW/2-1,y+RH,2,GAP);
-    // Punto indicador si es la actual
+    const x=gx*(RW+GAP), y=gy*(RH+GAP);
+    if(!room.visited){
+      // Habitación no descubierta: silueta tenue si es adyacente a una visitada
+      const adj=[roomGrid[gy-1]?.[gx],roomGrid[gy+1]?.[gx],roomGrid[gy]?.[gx-1],roomGrid[gy]?.[gx+1]];
+      if(adj.some(r=>r?.visited)){
+        mmCtx.fillStyle='#1a1e2c'; mmCtx.fillRect(x,y,RW,RH);
+      }
+      continue;
+    }
+    // Fondo de sala
+    mmCtx.fillStyle = room===curRoom ? '#4ecf9a' : room.cleared ? '#2a3a50' : '#4a2020';
+    mmCtx.fillRect(x,y,RW,RH);
+    // Pasillos
+    mmCtx.fillStyle='#3a4060';
+    if(room.doors.E && gx<ROOM_COLS-1) mmCtx.fillRect(x+RW, y+Math.floor(RH/2)-1, GAP, 2);
+    if(room.doors.S && gy<ROOM_ROWS-1) mmCtx.fillRect(x+Math.floor(RW/2)-1, y+RH, 2, GAP);
+    // Punto jugador
     if(room===curRoom){
-      ctx.fillStyle='#0b0d13';
-      ctx.fillRect(x+RW/2-1,y+RH/2-1,3,3);
+      mmCtx.fillStyle='#0b0d13';
+      mmCtx.fillRect(x+Math.floor(RW/2)-1, y+Math.floor(RH/2)-1, 3, 3);
     }
   }
-  ctx.globalAlpha=1;
 }
 
 // ── Entrada a dungeon ──
@@ -313,12 +328,14 @@ function irDungeon() {
 }
 
 function gameLoop() {
+  if(transitionCooldown>0) transitionCooldown--;
   tickPlayer();
   tickEnemigos();
   tickProjectiles();
   if(playerFlash>0) playerFlash--;
   dibujar();
   renderHud();
+  renderMinimap();
   gameLoopId=requestAnimationFrame(gameLoop);
 }
 
@@ -475,8 +492,6 @@ function dibujar() {
   ctx.fillStyle='#0b0d13'; ctx.font='bold 12px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('⚗',player.x,player.y);
 
-  // Minimap
-  drawMinimap();
 }
 
 function renderHud() {
