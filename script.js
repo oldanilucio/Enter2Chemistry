@@ -123,7 +123,7 @@ let transitionCooldown = 0; // frames de gracia tras cambiar de sala
 const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
 
 // ── Sprites del jugador ──
-const SPRITE_SIZE = 56; // tamaño de dibujo en canvas
+const SPRITE_SIZE = 96; // tamaño de dibujo en canvas
 const PLAYER_SPRITES = {};
 const SPRITE_MAP = {S:'S',SE:'SE',E:'E',NE:'NE',N:'N',NW:'NW',W:'W',SW:'SW'};
 let spritesReady = false;
