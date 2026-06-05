@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚗ Roguelike Químico</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ MENÚ ══ -->
+<div class="screen active" id="menu">
+  <div class="menu-bg"></div>
+  <h1 class="menu-title">⚗ ROGUELIKE<br>QUÍMICO</h1>
+  <p class="menu-sub">combiná elementos · fabricá armas · sobreviví</p>
+  <button class="menu-btn" onclick="irA('lab')">ENTRAR AL LABORATORIO →</button>
+  <span class="menu-version">v0.1 — prototipo</span>
+</div>
+
+<!-- ══ LABORATORIO ══ -->
+<div class="screen" id="lab">
+  <div class="lab-header">
+    <h1>⚗ LABORATORIO</h1>
+    <p>seleccioná elementos · combiná · fabricá armas para la dungeon</p>
+  </div>
+  <div class="lab-body">
+    <div class="panel" id="panel-elem">
+      <div class="panel-title">// ELEMENTOS</div>
+      <div class="elem-grid" id="elem-grid"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">// MESA DE TRABAJO</div>
+      <div class="mesa-zona empty" id="mesa-zona">seleccioná elementos</div>
+      <div class="mesa-btns">
+        <button class="mbtn mbtn-ok" id="btn-comb" disabled onclick="combinar()">COMBINAR</button>
+        <button class="mbtn mbtn-cl" onclick="limpiar()">LIMPIAR</button>
+      </div>
+      <div class="resultado-box" id="res-box">
+        <span class="res-empty">// resultado aparece acá</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">// ARMAS FABRICADAS</div>
+      <div class="armas-lista" id="armas-lista"></div>
+      <button class="btn-dungeon" id="btn-dun" disabled onclick="irDungeon()">→ ENTRAR A LA DUNGEON</button>
+      <button class="mbtn mbtn-cl" style="margin-top:8px;width:100%;letter-spacing:1px;" onclick="reiniciarLab()">↺ REINICIAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DUNGEON ══ -->
+<div class="screen" id="dungeon">
+  <div class="dun-hud">
+    <div class="hud-box hud-hp" id="hud-hp">❤ HP: 100</div>
+    <div class="hud-box hud-armas" id="hud-armas"></div>
+  </div>
+  <canvas id="game-canvas" width="960" height="600"></canvas>
+  <div class="dun-msg" id="dun-msg"></div>
+  <button class="btn-volver" onclick="irA('menu')">← VOLVER AL MENÚ</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
