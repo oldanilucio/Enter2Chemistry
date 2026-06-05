@@ -143,15 +143,16 @@ function getFacingDir() {
   const down  = keys['KeyS'] || keys['ArrowDown'];
   const left  = keys['KeyA'] || keys['ArrowLeft'];
   const right = keys['KeyD'] || keys['ArrowRight'];
-  if(up   && right) return 'NE';
-  if(up   && left)  return 'NW';
-  if(down && right) return 'SE';
-  if(down && left)  return 'SW';
+  // Solo 4 cardinales; en diagonal gana el último eje presionado
+  if(up   && right) return lastAxis==='h' ? 'E' : 'N';
+  if(up   && left)  return lastAxis==='h' ? 'W' : 'N';
+  if(down && right) return lastAxis==='h' ? 'E' : 'S';
+  if(down && left)  return lastAxis==='h' ? 'W' : 'S';
   if(up)    return 'N';
   if(down)  return 'S';
   if(right) return 'E';
   if(left)  return 'W';
-  return null; // sin tecla: mantener última dirección
+  return null;
 }
 
 const WEAPON_STATUS = {
