@@ -87,6 +87,8 @@ function renderArmas() {
 // ══ DUNGEON ══
 const TILE = 32, COLS = 30, ROWS = 18;
 let canvas, ctx, player, enemies, armaActiva, turno, msgTimer, hp;
+let enemyLoopId = null;
+const ENEMY_INTERVAL = 800; // ms entre cada movimiento autónomo de enemigos
 const TIPOS_TILE = {PARED:0, PISO:1};
 let mapa = [];
 
@@ -125,6 +127,8 @@ function irDungeon() {
   renderHud();
   dibujar();
   document.onkeydown = onKey;
+  clearInterval(enemyLoopId);
+  enemyLoopId = setInterval(tickEnemigos, ENEMY_INTERVAL);
 }
 
 function onKey(e) {
@@ -152,7 +156,6 @@ function mover(dir) {
   const en = enemies.find(e=>e.c===nc&&e.r===nr&&e.vivo);
   if(en){ atacarEnemigo(en); return; }
   player.c=nc; player.r=nr;
-  turnoEnemigos();
   dibujar();
 }
 
@@ -172,10 +175,15 @@ function atacarEnemigo(en) {
   const dmg = calcularDano(arma);
   en.hp -= dmg;
   dunMsg(`${arma.nombre} → ${en.nombre}: -${dmg} HP`);
-  if(en.hp<=0){ en.vivo=false; dunMsg(`¡${en.nombre} derrotado!`); }
-  turnoEnemigos();
+  if(en.hp<=0){
+    en.vivo=false;
+    dunMsg(`¡${en.nombre} derrotado!`);
+    if(enemies.every(e=>!e.vivo)){
+      clearInterval(enemyLoopId);
+      setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
+    }
+  }
   dibujar(); renderHud();
-  if(enemies.every(e=>!e.vivo)) setTimeout(()=>dunMsg("¡Todos los enemigos derrotados! ¡Piso completado!"),300);
 }
 
 function calcularDano(arma) {
@@ -183,20 +191,26 @@ function calcularDano(arma) {
   return base + Math.floor(Math.random()*8);
 }
 
-function turnoEnemigos() {
+function tickEnemigos() {
+  if(!enemies) return;
   enemies.filter(e=>e.vivo).forEach(en => {
     const dist = Math.abs(en.c-player.c)+Math.abs(en.r-player.r);
     if(dist===1){
       const dmg=5+Math.floor(Math.random()*5); hp-=dmg; if(hp<0)hp=0;
+      dunMsg(`${en.nombre} te ataca: -${dmg} HP`);
     } else {
       const dc=Math.sign(player.c-en.c), dr=Math.sign(player.r-en.r);
-      const nc=en.c+dc, nr=en.r+dr;
-      if(mapa[nr]?.[nc]===TIPOS_TILE.PISO && !enemies.find(e=>e.vivo&&e.c===nc&&e.r===nr)){
-        en.c=nc; en.r=nr;
+      // Intentar moverse en diagonal, sino solo horizontal o vertical
+      const opciones = [[dc,dr],[dc,0],[0,dr]];
+      for(const [mc,mr] of opciones){
+        const nc=en.c+mc, nr=en.r+mr;
+        if(mapa[nr]?.[nc]===TIPOS_TILE.PISO && !enemies.find(e=>e.vivo&&e.c===nc&&e.r===nr)){
+          en.c=nc; en.r=nr; break;
+        }
       }
     }
   });
-  renderHud();
+  dibujar(); renderHud();
 }
 
 function dibujar() {
@@ -245,6 +259,7 @@ function irA(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if(id==='lab') reiniciarLab();
+  if(id!=='dungeon'){ clearInterval(enemyLoopId); document.onkeydown = null; }
 }
 
 let toastT;
