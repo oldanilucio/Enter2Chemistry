@@ -122,6 +122,38 @@ let transitionCooldown = 0; // frames de gracia tras cambiar de sala
 
 const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
 
+// ── Sprites del jugador ──
+const SPRITE_SIZE = 56; // tamaño de dibujo en canvas
+const PLAYER_SPRITES = {};
+const SPRITE_MAP = {S:'S',SE:'SE',E:'E',NE:'NE',N:'N',NW:'NW',W:'W',SW:'SW'};
+let spritesReady = false;
+
+function preloadSprites() {
+  let loaded = 0;
+  for (const dir of Object.keys(SPRITE_MAP)) {
+    const img = new Image();
+    img.src = `sprites/player_${dir}.png`;
+    img.onload = () => { if(++loaded === 8) spritesReady = true; };
+    PLAYER_SPRITES[dir] = img;
+  }
+}
+
+function getFacingDir() {
+  const up    = keys['KeyW'] || keys['ArrowUp'];
+  const down  = keys['KeyS'] || keys['ArrowDown'];
+  const left  = keys['KeyA'] || keys['ArrowLeft'];
+  const right = keys['KeyD'] || keys['ArrowRight'];
+  if(up   && right) return 'NE';
+  if(up   && left)  return 'NW';
+  if(down && right) return 'SE';
+  if(down && left)  return 'SW';
+  if(up)    return 'N';
+  if(down)  return 'S';
+  if(right) return 'E';
+  if(left)  return 'W';
+  return null; // sin tecla: mantener última dirección
+}
+
 const WEAPON_STATUS = {
   Fuego:   { type:'burn',     seconds:3, dps:8,  label:'🔥 Quemando'   },
   Veneno:  { type:'poison',   seconds:5, dps:4,  label:'☠ Envenenado'  },
@@ -304,8 +336,9 @@ function irDungeon() {
   canvas=document.getElementById('game-canvas');
   ctx=canvas.getContext('2d');
   hp=100; armaActiva=0; projectiles=[]; playerFlash=0;
-  player={x:14.5*TILE, y:8.5*TILE};
+  player={x:14.5*TILE, y:8.5*TILE, facing:'S'};
   keys={}; lastAxis='h';
+  preloadSprites();
 
   const startRoom=generateRoomGrid();
   loadRoom(startRoom, null);
@@ -347,6 +380,8 @@ function tickPlayer() {
   else { mx=h; my=v; }
   if(mx){ const nx=player.x+mx*PLAYER_SPEED; if(!solid(nx,player.y,PLAYER_R)) player.x=nx; }
   if(my){ const ny=player.y+my*PLAYER_SPEED; if(!solid(player.x,ny,PLAYER_R)) player.y=ny; }
+  const dir = getFacingDir();
+  if(dir) player.facing = dir;
   checkDoorTransition();
 }
 
@@ -486,11 +521,26 @@ function dibujar() {
   });
 
   // Jugador
-  const pColor=playerFlash>0?'#4a9fe0':'#4ecf9a';
-  ctx.fillStyle=pColor; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='#0b0d13'; ctx.lineWidth=2; ctx.stroke();
-  ctx.fillStyle='#0b0d13'; ctx.font='bold 12px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('⚗',player.x,player.y);
+  if(playerFlash>0){
+    // Flash de curación: tinte azul sobre el sprite
+    ctx.save();
+    ctx.globalAlpha=0.45;
+    ctx.fillStyle='#4a9fe0';
+    ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R+4,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  const spr = PLAYER_SPRITES[player.facing||'S'];
+  if(spritesReady && spr?.complete && spr.naturalWidth>0){
+    ctx.drawImage(spr,
+      player.x - SPRITE_SIZE/2,
+      player.y - SPRITE_SIZE/2,
+      SPRITE_SIZE, SPRITE_SIZE);
+  } else {
+    // Fallback: círculo mientras cargan los sprites
+    const pColor=playerFlash>0?'#4a9fe0':'#4ecf9a';
+    ctx.fillStyle=pColor; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER_R,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#0b0d13'; ctx.lineWidth=2; ctx.stroke();
+  }
 
 }
 
