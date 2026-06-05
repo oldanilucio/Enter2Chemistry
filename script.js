@@ -123,7 +123,7 @@ let transitionCooldown = 0; // frames de gracia tras cambiar de sala
 const PROJ_COLOR = {Fuego:"#e07b3a",Veneno:"#4ecf9a",Acido:"#d04545",Frio:"#7ab8e8",Control:"#6a7280",Raro:"#9b6cd8"};
 
 // ── Sprites del jugador ──
-const SPRITE_SIZE = 96; // tamaño de dibujo en canvas
+const SPRITE_SIZE = 112; // tamaño de dibujo en canvas
 const PLAYER_SPRITES = {};
 const SPRITE_MAP = {S:'S',SE:'SE',E:'E',NE:'NE',N:'N',NW:'NW',W:'W',SW:'SW'};
 let spritesReady = false;
@@ -302,7 +302,7 @@ function renderMinimap() {
     if(!mc) return;
     mmCtx=mc.getContext('2d');
   }
-  const RW=10, RH=7, GAP=2;
+  const RW=7, RH=5, GAP=2;
   mmCtx.clearRect(0,0,96,48);
   for(let gy=0;gy<ROOM_ROWS;gy++) for(let gx=0;gx<ROOM_COLS;gx++){
     const room=roomGrid[gy][gx];
